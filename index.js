@@ -6,7 +6,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./config/db");
-
+const rentalBookingRoutes = require("./routes/rental-booking.routes");
 // Import Routes
 const userRoutes = require("./routes/user.routes");
 const equipmentRoutes = require("./routes/equipment.routes");
@@ -32,7 +32,7 @@ app.get("/", (req, res) => {
 // Mount Routes
 app.use("/api/users", userRoutes);
 app.use("/api/equipment", equipmentRoutes);
-
+app.use("/api/bookings", rentalBookingRoutes);
 // 404 Not Found Handler
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
