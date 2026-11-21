@@ -1,5 +1,10 @@
 // seed.js
 // This script adds dummy equipment to the database for testing purposes.
+
+// Force Node.js to use Google's public DNS servers (Same fix as index.js)
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '8.8.4.4']);
+
 require("dotenv").config();
 const mongoose = require("mongoose");
 const Equipment = require("./models/equipment.model");
