@@ -1,7 +1,6 @@
 // seed.js
-// This script adds dummy equipment to the database for testing purposes.
+// This script adds dummy equipment to the database using local image paths.
 
-// Force Node.js to use Google's public DNS servers (Same fix as index.js)
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
@@ -20,9 +19,9 @@ const dummyEquipment = [
     availableQuantity: 3,
     condition: "Excellent",
     brand: "Canon",
-    imageURL: "https://images.unsplash.com/photo-1516035069371-29a1b244cc32?q=80&w=1000&auto=format&fit=crop",
+    imageURL: "/images/equipment/camera1.jpg", // Local Path
     rentalTerms: "Must provide ID. Late returns incur extra charges.",
-    status: "approved", // We set this to approved so it shows up publicly
+    status: "approved",
     ownerId: "dummy_owner_id_1",
     ownerName: "John Owner",
     ownerEmail: "owner@example.com",
@@ -37,7 +36,7 @@ const dummyEquipment = [
     availableQuantity: 2,
     condition: "Good",
     brand: "JCB",
-    imageURL: "https://images.unsplash.com/photo-1581094794329-c8112a89af12?q=80&w=1000&auto=format&fit=crop",
+    imageURL: "/images/equipment/backhoe.jpg", // Local Path
     rentalTerms: "Operator must have valid license.",
     status: "approved",
     ownerId: "dummy_owner_id_2",
@@ -54,7 +53,7 @@ const dummyEquipment = [
     availableQuantity: 5,
     condition: "Excellent",
     brand: "Sony",
-    imageURL: "https://images.unsplash.com/photo-1516724562728-afc824a36e84?q=80&w=1000&auto=format&fit=crop",
+    imageURL: "/images/equipment/camera2.jpg", // Local Path
     rentalTerms: "Any damage will be charged.",
     status: "approved",
     ownerId: "dummy_owner_id_1",
@@ -71,7 +70,7 @@ const dummyEquipment = [
     availableQuantity: 1,
     condition: "Good",
     brand: "John Deere",
-    imageURL: "https://images.unsplash.com/photo-1592982537447-6f2a6a0c7c14?q=80&w=1000&auto=format&fit=crop",
+    imageURL: "/images/equipment/tractor.jpg", // Local Path
     rentalTerms: "Fuel not included.",
     status: "approved",
     ownerId: "dummy_owner_id_3",
@@ -83,8 +82,12 @@ const dummyEquipment = [
 const seedDB = async () => {
   try {
     await mongoose.connect(process.env.MONGODB_URI);
+    
+    // Clear old data so the broken links are removed
+    await Equipment.deleteMany(); 
+    
     await Equipment.insertMany(dummyEquipment);
-    console.log("✅ Dummy equipment inserted successfully!");
+    console.log("✅ Dummy equipment inserted with local images!");
     process.exit(0);
   } catch (err) {
     console.error("❌ Error inserting data:", err);
