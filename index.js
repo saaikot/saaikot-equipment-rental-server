@@ -1,8 +1,6 @@
 // index.js
-// Force Node.js to use Google's public DNS servers to resolve MongoDB Atlas SRV records
-const dns = require('dns');
-dns.setServers(['8.8.8.8', '8.8.4.4']);
-
+// Express application. On Vercel this file is detected automatically and the
+// exported app runs as a single serverless function.
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -13,8 +11,8 @@ const userRoutes = require("./routes/user.routes");
 const equipmentRoutes = require("./routes/equipment.routes");
 const rentalBookingRoutes = require("./routes/rental-booking.routes");
 const rentalFavoriteRoutes = require("./routes/rental-favorite.routes");
-const rentalPaymentRoutes = require("./routes/rental-payment.routes"); // 👈 নতুন
-const rentalAnalyticsRoutes = require("./routes/rental-analytics.routes"); // 👈 নতুন
+const rentalPaymentRoutes = require("./routes/rental-payment.routes");
+const rentalAnalyticsRoutes = require("./routes/rental-analytics.routes");
 
 const app = express();
 
@@ -26,11 +24,23 @@ app.use(
   })
 );
 
-// 🚨 IMPORTANT: Payment routes must be mounted BEFORE express.json() 
-// so that the Stripe Webhook can receive the raw body.
+// Connect to MongoDB before handling a request. The helper caches the
+// connection, so after the first request this is only a cheap state check.
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("❌ MongoDB connection error:", error.message);
+    res.status(503).json({ message: "Database unavailable" });
+  }
+});
+
+// IMPORTANT: Payment routes are mounted BEFORE express.json() so the Stripe
+// webhook can receive the raw body. Their JSON routes parse bodies individually.
 app.use("/api/payments", rentalPaymentRoutes);
 
-// Middleware to parse incoming JSON payloads (For all other routes)
+// Middleware to parse incoming JSON payloads (for all other routes)
 app.use(express.json());
 
 // A simple health check route
@@ -43,7 +53,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/equipment", equipmentRoutes);
 app.use("/api/bookings", rentalBookingRoutes);
 app.use("/api/favorites", rentalFavoriteRoutes);
-app.use("/api/analytics", rentalAnalyticsRoutes); // 👈 নতুন
+app.use("/api/analytics", rentalAnalyticsRoutes);
 
 // 404 Not Found Handler
 app.use((req, res) => {
@@ -56,11 +66,5 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: "Internal server error" });
 });
 
-const PORT = process.env.PORT || 5000;
-
-// Connect to DB, then start the server
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-  });
-});
+// Export the app so Vercel can run it as a serverless function.
+module.exports = app;
