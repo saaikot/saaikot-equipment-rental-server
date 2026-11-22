@@ -37,12 +37,12 @@ This file contains the master context, rules, and progress for the RentEasy assi
 - **Middlewares:** `verifyToken` (JWKS), `verifyRenter`, `verifyOwner`, `verifyAdmin`
 - **Routes:** All API endpoints wired up in `index.js` with proper role-based access.
 
-### Frontend (Next Steps)
-- [ ] Next.js + ShadCN setup
-- [ ] BetterAuth config (email/pass + Google)
-- [ ] Public Pages (Home, All Equipment, Details)
-- [ ] Customer Dashboard (My Rentals, Favorites, Profile)
-- [ ] Owner Dashboard (Add Equipment, My Equipment, My Rentals)
-- [ ] Admin Dashboard (Users, Equipment, Rentals, Analytics Charts)
-- [ ] Stripe Checkout integration
+### Frontend (100% COMPLETE)
+- [x] Next.js + ShadCN setup
+- [x] BetterAuth config (email/pass + Google)
+- [x] Public Pages (Home, All Equipment, Details)
+- [x] Customer Dashboard (My Rentals, Favorites, Profile)
+- [x] Owner Dashboard (Add Equipment, My Equipment, Equipment Rentals, Profile)
+- [x] Admin Dashboard (Users, Equipment, Rentals, Analytics Charts)
+- [x] Stripe Checkout integration + success/cancel pages
 - [ ] Deployment (Vercel + Render/Railway)
