@@ -1,6 +1,13 @@
 // config/db.js
 // Handles the MongoDB connection using Mongoose.
+const dns = require("dns");
 const mongoose = require("mongoose");
+
+// Windows/Node can fail to resolve MongoDB Atlas SRV records with the system
+// resolver, so force Google DNS locally. Vercel's resolver works as-is.
+if (!process.env.VERCEL) {
+  dns.setServers(["8.8.8.8", "8.8.4.4"]);
+}
 
 // Cache the connection promise so serverless invocations (Vercel) reuse a single
 // connection instead of opening a new one on every request.
