@@ -23,9 +23,16 @@ This file contains the master context, rules, and progress for the RentEasy assi
 5. Context Updates: Always provide an updated version of this file at the end.
 
 ## 🗄️ External Services Setup
-- **MongoDB Atlas:** Cluster: `bazardor`. User: `renteasy`. DNS fix applied in `index.js`.
-- **Google OAuth:** Not created yet (will do in frontend).
-- **Stripe:** Keys not set yet in `.env` (will do in frontend).
+- **MongoDB Atlas:** Cluster: `bazardor`. User: `renteasy`. DNS fix applied locally in `server.js` (skipped on Vercel).
+- **Google OAuth:** Configured in the client `.env.local`.
+- **Stripe:** Test keys set in `.env`.
+
+## ▲ Deployment (Vercel)
+- `index.js` exports the Express app; Vercel detects it as a single serverless function.
+- `server.js` is the local listener only (`npm run dev` / `npm start`).
+- `config/db.js` caches the Mongoose connection across serverless invocations.
+- Required Vercel env vars: `MONGODB_URI`, `CLIENT_URL`, `BETTER_AUTH_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
+- Stripe webhook URL: `https://<api>.vercel.app/api/payments/webhook`.
 
 ---
 
