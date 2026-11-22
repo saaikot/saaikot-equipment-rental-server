@@ -1,10 +1,9 @@
+// server/middleware/auth.middleware.js
 // Verifies JWTs issued by BetterAuth using its JWKS (JSON Web Key Set) endpoint.
 const { createRemoteJWKSet, jwtVerify } = require("jose");
 const User = require("../models/user.model");
 
 // Fetch public keys from the Next.js BetterAuth endpoint.
-// BETTER_AUTH_URL must point to your Next.js app that hosts BetterAuth. For local development, it might be http://localhost:3001.
-
 const JWKS = createRemoteJWKSet(
   new URL(`${process.env.BETTER_AUTH_URL}/api/auth/jwks`)
 );
@@ -14,28 +13,54 @@ const verifyToken = async (req, res, next) => {
   try {
     const header = req.headers.authorization || "";
     const token = header.startsWith("Bearer ") ? header.split(" ")[1] : null;
-    if (!token) return res.status(401).json({ message: "No token provided" });
+    
+    // Check if token exists and isn't the string "undefined"
+    if (!token || token === "undefined") {
+      console.log("❌ [Auth Middleware] No token or token is undefined");
+      return res.status(401).json({ message: "No token provided" });
+    }
 
-    // Verify token signature using the public keys (JWKS)
-    const { payload } = await jwtVerify(token, JWKS, {
-      issuer: process.env.BETTER_AUTH_URL,
-      audience: process.env.BETTER_AUTH_URL,
-    });
+    // Verify token signature
+    const { payload } = await jwtVerify(token, JWKS);
 
-    // payload.sub contains the BetterAuth user ID
-    const userId = payload.sub || payload.id;
-    if (!userId) return res.status(401).json({ message: "Invalid token payload" });
+    // Extract ID and Email from the token payload
+    const userId = payload.sub || payload.id || payload.userId;
+    const userEmail = payload.email;
 
-    // Fetch user from DB to get their current role
-    const user = await User.findById(userId).lean();
-    if (!user) return res.status(401).json({ message: "User not found" });
+    // 1. Try to find the user by ID first
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+
+    // 2. If not found by ID, fallback to finding by Email
+    // This is helpful because BetterAuth sometimes uses a different ID format
+    if (!user && userEmail) {
+      console.log("⚠️ User not found by ID, finding by email instead:", userEmail);
+      user = await User.findOne({ email: userEmail }).lean();
+    }
+
+    if (!user) {
+      console.log("❌ [Auth Middleware] User not found in DB. ID:", userId, "Email:", userEmail);
+      return res.status(401).json({ message: "User not found in database" });
+    }
 
     // Attach user info to the request object
-    req.user = { id: user._id, role: user.role, email: user.email, name: user.name };
+    // Ensure the ID is converted to string to avoid type mismatch issues later
+    req.user = { 
+      id: user._id.toString(), 
+      role: user.role, 
+      email: user.email, 
+      name: user.name 
+    };
+    
     next();
   } catch (err) {
-    console.error("JWT Verification Error:", err.message);
-    return res.status(401).json({ message: "Invalid or expired token" });
+    // Print the actual error to the backend terminal
+    console.error("❌ [Auth Middleware] JWT Verification Failed:", err.message);
+    
+    // Send the actual error message to the frontend for debugging
+    return res.status(401).json({ message: "Invalid token", error: err.message });
   }
 };
 
