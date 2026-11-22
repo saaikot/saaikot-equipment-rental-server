@@ -29,7 +29,7 @@ This file contains the master context, rules, and progress for the RentEasy assi
 
 ## ▲ Deployment (Vercel)
 - `index.js` exports the Express app; Vercel detects it as a single serverless function.
-- `server.js` is the local listener only (`npm run dev` / `npm start`).
+- `local-server.js` is the local listener only (`npm run dev` / `npm start`).
 - `config/db.js` caches the Mongoose connection across serverless invocations.
 - Required Vercel env vars: `MONGODB_URI`, `CLIENT_URL`, `BETTER_AUTH_URL`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`.
 - Stripe webhook URL: `https://<api>.vercel.app/api/payments/webhook`.
