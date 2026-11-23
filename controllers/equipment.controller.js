@@ -46,6 +46,7 @@ const getAllEquipment = async (req, res) => {
       if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
     if (availability === "available") filter.availableQuantity = { $gt: 0 };
+    if (availability === "unavailable") filter.availableQuantity = { $lte: 0 };
 
     // Sorting logic
     let sortOption = { createdAt: -1 }; // Default: Recently Added
@@ -98,17 +99,22 @@ const getMyEquipment = async (req, res) => {
   }
 };
 
-// 6. Update Equipment (Owner Only)
+// 6. Update Equipment (Owner or Admin)
 const updateEquipment = async (req, res) => {
   try {
     const equipment = await Equipment.findById(req.params.id);
     if (!equipment) return res.status(404).json({ message: "Equipment not found" });
-    if (equipment.ownerId !== req.user.id) return res.status(403).json({ message: "Not authorized" });
+    if (equipment.ownerId !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ message: "Not authorized" });
+    }
 
     const allowed = ["name", "description", "category", "location", "price", "rentalType", "availableQuantity", "condition", "brand", "model", "imageURL", "rentalTerms"];
     allowed.forEach((k) => { if (req.body[k] !== undefined) equipment[k] = req.body[k]; });
 
-    equipment.status = "pending"; // Reset to pending after edit so admin can re-approve
+    // Owner edits need re-approval; admin edits keep the current status.
+    if (req.user.role !== "admin") {
+      equipment.status = "pending";
+    }
     await equipment.save();
     
     res.json({ message: "Equipment updated", equipment });

@@ -24,7 +24,7 @@ router.patch("/:id/reject", verifyToken, verifyAdmin, rejectEquipment);
 
 // --- Shared Private Routes ---
 router.get("/:id", verifyToken, getSingleEquipment);
-router.put("/:id", verifyToken, verifyOwner, updateEquipment);
+router.put("/:id", verifyToken, updateEquipment); // Owner or Admin checked in controller
 router.delete("/:id", verifyToken, deleteEquipment); // Owner or Admin checked in controller
 
 module.exports = router;

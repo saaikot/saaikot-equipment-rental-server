@@ -1,6 +1,7 @@
 // controllers/rental-booking.controller.js
 const Booking = require("../models/booking.model");
 const Equipment = require("../models/equipment.model");
+const User = require("../models/user.model");
 
 // Helper: Calculate how many units (days/weeks/months) to bill
 const calcRentalUnits = (start, end, rentalType) => {
@@ -89,8 +90,23 @@ const getAllBookings = async (req, res) => {
   try {
     const bookings = await Booking.find()
       .populate("equipmentId", "name imageURL category")
-      .sort({ createdAt: -1 });
-    res.json({ bookings });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Attach the owner's name/email so the admin table can show both parties.
+    const ownerIds = [...new Set(bookings.map((booking) => booking.ownerId))];
+    const owners = await User.find({ _id: { $in: ownerIds } })
+      .select("name email")
+      .lean();
+    const ownerMap = new Map(owners.map((owner) => [owner._id, owner]));
+
+    const enriched = bookings.map((booking) => ({
+      ...booking,
+      ownerName: ownerMap.get(booking.ownerId)?.name || "",
+      ownerEmail: ownerMap.get(booking.ownerId)?.email || "",
+    }));
+
+    res.json({ bookings: enriched });
   } catch (err) {
     res.status(500).json({ message: "Server error", error: err.message });
   }
