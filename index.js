@@ -1,6 +1,9 @@
 // index.js
 // Express application. On Vercel this file is detected automatically and the
 // exported app runs as a single serverless function.
+const dns = require("dns");
+dns.setServers(["8.8.8.8", "8.8.4.4"]);
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
