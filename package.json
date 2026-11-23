@@ -1,11 +1,14 @@
 {
   "name": "saaikot-equipment-rental-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "RentEasy equipment rental API",
   "main": "index.js",
   "scripts": {
     "start": "node local-server.js",
     "dev": "nodemon local-server.js"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "repository": {
     "type": "git",
@@ -15,10 +18,6 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/saaikot/saaikot-equipment-rental-server/issues"
-  },
-  "homepage": "https://github.com/saaikot/saaikot-equipment-rental-server#readme",
   "dependencies": {
     "cors": "^2.8.6",
     "dotenv": "^18.0.10",
