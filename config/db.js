@@ -1,32 +1,44 @@
-// server/config/db.js
+// MongoDB connection helper with serverless connection reuse.
 const mongoose = require("mongoose");
 
-// Cache the connection promise to reuse it across invocations
-let cachedPromise = null;
+let cachedConnectionPromise = null;
 
-const connectDB = async () => {
-  // If we already have a connection promise, return it
-  if (cachedPromise) {
-    return cachedPromise;
+async function connectDB() {
+  const mongoUri = process.env.MONGODB_URI;
+
+  if (!mongoUri) {
+    throw new Error("MONGODB_URI is not configured in environment variables");
   }
 
-  // Create a new connection promise
-  cachedPromise = mongoose
-    .connect(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
+  // A connection may already be active even if this module was reloaded.
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  // Reuse an in-progress connection attempt across warm invocations.
+  if (cachedConnectionPromise) {
+    return cachedConnectionPromise;
+  }
+
+  cachedConnectionPromise = mongoose
+    .connect(mongoUri, {
+      serverSelectionTimeoutMS: 10000,
+      connectTimeoutMS: 10000,
+      maxPoolSize: 10,
+      minPoolSize: 0,
+      bufferCommands: false,
     })
-    .then((conn) => {
-      console.log(`✅ MongoDB connected: ${conn.connection.host}`);
-      return conn;
+    .then((connection) => {
+      console.log("MongoDB connected:", connection.connection.host);
+      return connection;
     })
     .catch((error) => {
-      // If connection fails, clear the cache so the next request can retry
-      cachedPromise = null;
-      console.error("❌ MongoDB connection error:", error.message);
+      cachedConnectionPromise = null;
+      console.error("MongoDB connection error:", error.message);
       throw error;
     });
 
-  return cachedPromise;
-};
+  return cachedConnectionPromise;
+}
 
 module.exports = connectDB;
