@@ -1,43 +1,32 @@
-// config/db.js
-// Handles the MongoDB connection using Mongoose.
-const dns = require("dns");
+// server/config/db.js
 const mongoose = require("mongoose");
 
-// Windows/Node can fail to resolve MongoDB Atlas SRV records with the system
-// resolver, so force Google DNS locally. Vercel's resolver works as-is.
-if (!process.env.VERCEL) {
-  dns.setServers(["8.8.8.8", "8.8.4.4"]);
-}
-
-// Cache the connection promise so serverless invocations (Vercel) reuse a single
-// connection instead of opening a new one on every request.
-let connectionPromise = null;
+// Cache the connection promise to reuse it across invocations
+let cachedPromise = null;
 
 const connectDB = async () => {
-  // Already connected: nothing to do.
-  if (mongoose.connection.readyState === 1) return mongoose.connection;
-
-  // Make the missing configuration obvious instead of failing deep inside Mongoose.
-  if (!process.env.MONGODB_URI) {
-    throw new Error("MONGODB_URI is missing in environment variables");
+  // If we already have a connection promise, return it
+  if (cachedPromise) {
+    return cachedPromise;
   }
 
-  // Only start one connection attempt at a time.
-  if (!connectionPromise) {
-    connectionPromise = mongoose
-      .connect(process.env.MONGODB_URI)
-      .then((conn) => {
-        console.log(`✅ MongoDB connected: ${conn.connection.host}`);
-        return conn.connection;
-      })
-      .catch((error) => {
-        // Allow a later request to retry after a transient failure.
-        connectionPromise = null;
-        throw error;
-      });
-  }
+  // Create a new connection promise
+  cachedPromise = mongoose
+    .connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
+    })
+    .then((conn) => {
+      console.log(`✅ MongoDB connected: ${conn.connection.host}`);
+      return conn;
+    })
+    .catch((error) => {
+      // If connection fails, clear the cache so the next request can retry
+      cachedPromise = null;
+      console.error("❌ MongoDB connection error:", error.message);
+      throw error;
+    });
 
-  return connectionPromise;
+  return cachedPromise;
 };
 
 module.exports = connectDB;
