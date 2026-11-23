@@ -1,23 +1,33 @@
 // routes/rental-booking.routes.js
 const express = require("express");
 const {
-  createBooking, getMyRentals, getOwnerRentals, getAllBookings, getSingleBooking, updateBookingStatus,
+  createBooking,
+  getMyRentals,
+  getOwnerRentals,
+  getAllBookings,
+  getSingleBooking,
+  updateBookingStatus,
 } = require("../controllers/rental-booking.controller");
-const { verifyToken, verifyRenter, verifyOwner, verifyAdmin } = require("../middleware/auth.middleware");
+const {
+  verifyToken,
+  verifyRenter,
+  verifyOwner,
+  verifyAdmin,
+} = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
-// --- Customer Routes ---
+// --- Customer routes ---
 router.post("/", verifyToken, verifyRenter, createBooking);
 router.get("/my-rentals", verifyToken, verifyRenter, getMyRentals);
 
-// --- Owner Routes ---
+// --- Owner routes ---
 router.get("/owner-rentals", verifyToken, verifyOwner, getOwnerRentals);
 
-// --- Admin Routes ---
+// --- Admin routes ---
 router.get("/", verifyToken, verifyAdmin, getAllBookings);
 
-// --- Shared Routes (Access controlled inside controller) ---
+// --- Shared routes (access checked in the controller) ---
 router.patch("/:id/status", verifyToken, updateBookingStatus);
 router.get("/:id", verifyToken, getSingleBooking);
 

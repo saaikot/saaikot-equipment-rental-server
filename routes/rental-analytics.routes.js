@@ -1,4 +1,4 @@
-// server/routes/rental-analytics.routes.js
+// routes/rental-analytics.routes.js
 const express = require("express");
 const { getAdminAnalytics, getOwnerAnalytics } = require("../controllers/rental-analytics.controller");
 const { verifyToken, verifyAdmin, verifyOwner } = require("../middleware/auth.middleware");

@@ -1,14 +1,17 @@
 {
   "name": "saaikot-equipment-rental-server",
   "version": "1.0.0",
-  "description": "RentEasy equipment rental API",
+  "description": "RentEasy equipment rental REST API (Express + MongoDB + Stripe)",
   "main": "index.js",
   "scripts": {
     "start": "node local-server.js",
-    "dev": "nodemon local-server.js"
+    "dev": "nodemon local-server.js",
+    "seed": "node seed.js",
+    "sync-indexes": "node scripts/sync-indexes.js",
+    "test": "node tests/run-all.js"
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": ">=20 <25"
   },
   "repository": {
     "type": "git",
@@ -18,15 +21,22 @@
   "author": "",
   "license": "ISC",
   "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/saaikot/saaikot-equipment-rental-server/issues"
+  },
+  "homepage": "https://github.com/saaikot/saaikot-equipment-rental-server#readme",
   "dependencies": {
+    "compression": "^1.8.2",
     "cors": "^2.8.6",
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
+    "express-rate-limit": "^8.7.5",
+    "helmet": "^8.3.0",
     "jose": "^6.2.18",
     "mongoose": "^9.12.2",
     "stripe": "^23.2.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "3.1.11"
   }
 }

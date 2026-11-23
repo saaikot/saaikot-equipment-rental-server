@@ -1,2 +1,21 @@
-node_modules
+# Environment files
 .env
+.env.*
+!.env.example
+
+# Dependencies / build output
+node_modules
+.npm
+coverage
+
+# Vercel
+.vercel
+
+# Logs / OS noise
+*.log
+npm-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
+*.crdownload
+*.tmp

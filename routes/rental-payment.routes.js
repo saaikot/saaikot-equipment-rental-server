@@ -1,14 +1,23 @@
-// server/routes/rental-payment.routes.js
+// routes/rental-payment.routes.js
 const express = require("express");
-const { createCheckoutSession, stripeWebhook, verifyPayment } = require("../controllers/rental-payment.controller");
+const {
+  createCheckoutSession,
+  verifyPayment,
+} = require("../controllers/rental-payment.controller");
 const { verifyToken, verifyRenter } = require("../middleware/auth.middleware");
+const { checkoutLimiter } = require("../middleware/rateLimit.middleware");
 
 const router = express.Router();
 
-// This router is mounted BEFORE the global express.json() (so the webhook can
-// receive the raw body), which means these routes must parse JSON themselves.
-router.post("/webhook", express.raw({ type: "application/json" }), stripeWebhook);
-router.post("/create-checkout-session", express.json(), verifyToken, verifyRenter, createCheckoutSession);
-router.post("/verify/:sessionId", express.json(), verifyToken, verifyRenter, verifyPayment);
+// The raw-body webhook route is mounted directly in index.js before
+// express.json(); these routes use the app-wide JSON parser.
+router.post(
+  "/create-checkout-session",
+  checkoutLimiter,
+  verifyToken,
+  verifyRenter,
+  createCheckoutSession
+);
+router.post("/verify/:sessionId", verifyToken, verifyRenter, verifyPayment);
 
 module.exports = router;

@@ -1,191 +1,227 @@
-// Stripe payment controller.
-// Stripe is initialized lazily so a missing Stripe key does not crash the
-// entire Express function during module loading. Payment endpoints will return
-// a clear configuration error until the key is added in Vercel Environment Variables.
-let stripeClient;
-
-function getStripe() {
-  if (!process.env.STRIPE_SECRET_KEY) {
-    throw new Error("STRIPE_SECRET_KEY is not configured");
-  }
-
-  if (!stripeClient) {
-    const Stripe = require("stripe");
-    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY);
-  }
-
-  return stripeClient;
-}
-
+// controllers/rental-payment.controller.js
 const Booking = require("../models/booking.model");
 const Equipment = require("../models/equipment.model");
 const Payment = require("../models/payment.model");
+const config = require("../config/env");
+const { getStripe } = require("../utils/stripe");
+const { isValidObjectId, cleanString } = require("../utils/validators");
+const { confirmPayment } = require("../services/rental-payment.service");
 
-const confirmPayment = async (booking, session) => {
-  await Payment.findOneAndUpdate(
-    { stripeSessionId: session.id },
-    {
-      bookingId: booking._id,
-      customerId: booking.customerId,
-      ownerId: booking.ownerId,
-      amount: session.amount_total / 100,
-      currency: session.currency,
-      stripeSessionId: session.id,
-      stripePaymentIntentId: session.payment_intent || "",
-      status: "succeeded",
-    },
-    { upsert: true, new: true }
-  );
-
-  if (booking.paymentStatus !== "paid") {
-    booking.paymentStatus = "paid";
-    booking.bookingStatus = "confirmed";
-    await booking.save();
-
-    const equipment = await Equipment.findById(booking.equipmentId);
-    if (equipment && equipment.availableQuantity >= booking.requiredQuantity) {
-      equipment.availableQuantity -= booking.requiredQuantity;
-      await equipment.save();
-    }
-  }
-};
-
-const createCheckoutSession = async (req, res) => {
+// 1. Create a Stripe Checkout Session for a booking.
+const createCheckoutSession = async (req, res, next) => {
   try {
-    const stripe = getStripe();
-    const { bookingId } = req.body;
-
-    if (!bookingId) {
-      return res.status(400).json({ message: "bookingId is required" });
+    const bookingId = req.body?.bookingId;
+    if (!isValidObjectId(bookingId)) {
+      return res.status(400).json({ message: "A valid bookingId is required" });
     }
 
-    const booking = await Booking.findById(bookingId).populate("equipmentId", "name");
-
+    const booking = await Booking.findById(bookingId);
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
     }
-
-    if (String(booking.customerId) !== String(req.user.id)) {
-      return res.status(403).json({ message: "Not your booking" });
+    if (booking.customerId !== req.user.id) {
+      return res.status(403).json({ message: "This booking does not belong to you" });
     }
-
     if (booking.paymentStatus === "paid") {
-      return res.status(400).json({ message: "Already paid" });
+      return res.status(400).json({ message: "This booking has already been paid" });
+    }
+    if (booking.paymentStatus === "refunded") {
+      return res.status(400).json({ message: "This booking was refunded" });
+    }
+    if (["cancelled", "completed"].includes(booking.bookingStatus)) {
+      return res.status(400).json({ message: "This booking can no longer be paid" });
     }
 
-    if (!booking.equipmentId) {
-      return res.status(400).json({ message: "Equipment no longer exists" });
+    const equipment = await Equipment.findById(booking.equipmentId)
+      .select("name availableQuantity")
+      .lean();
+    if (!equipment) {
+      return res.status(400).json({ message: "This equipment is no longer available" });
+    }
+    if (equipment.availableQuantity < booking.requiredQuantity) {
+      return res.status(409).json({ message: "The requested quantity is no longer available" });
     }
 
-    if (!process.env.CLIENT_URL) {
-      throw new Error("CLIENT_URL is not configured");
-    }
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: { name: `Rental: ${booking.equipmentId.name}` },
-            unit_amount: Math.round(booking.totalAmount * 100),
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        line_items: [
+          {
+            price_data: {
+              currency: "usd",
+              product_data: {
+                name: `Rental: ${equipment.name || booking.equipmentName || "Equipment"}`,
+              },
+              unit_amount: Math.round(booking.totalAmount * 100),
+            },
+            quantity: 1,
           },
-          quantity: 1,
+        ],
+        customer_email: booking.customerEmail,
+        client_reference_id: booking._id.toString(),
+        metadata: {
+          bookingId: booking._id.toString(),
+          customerId: booking.customerId,
         },
-      ],
-      metadata: { bookingId: booking._id.toString() },
-      success_url: `${process.env.CLIENT_URL}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${process.env.CLIENT_URL}/payment/cancel`,
-    });
+        success_url: `${config.clientUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${config.clientUrl}/payment/cancel`,
+      },
+      // Reusing the key prevents duplicate checkout sessions on double clicks.
+      { idempotencyKey: `checkout-${booking._id}` }
+    );
 
-    return res.json({ url: session.url });
+    if (!session.url) {
+      return res.status(502).json({ message: "Payment provider did not return a checkout URL" });
+    }
+
+    if (booking.stripeSessionId !== session.id) {
+      booking.stripeSessionId = session.id;
+      await booking.save();
+    }
+
+    return res.json({ url: session.url, sessionId: session.id });
   } catch (error) {
-    console.error("Stripe checkout error:", error.message);
-    return res.status(500).json({
-      message: "Unable to create checkout session",
-      ...(process.env.NODE_ENV !== "production"
-        ? { error: error.message }
-        : {}),
-    });
+    return next(error);
   }
 };
 
-const stripeWebhook = async (req, res) => {
+// 2. Stripe webhook. Mounted with express.raw() before the JSON parser.
+const stripeWebhook = async (req, res, next) => {
+  if (!config.stripeWebhookSecret || !config.stripeConfigured) {
+    return res.status(503).json({ message: "Stripe webhook is not configured" });
+  }
+
+  const signature = req.headers["stripe-signature"];
+  if (!signature || typeof signature !== "string") {
+    return res.status(400).json({ message: "Missing Stripe signature" });
+  }
+
+  let event;
   try {
-    const stripe = getStripe();
-
-    if (!process.env.STRIPE_WEBHOOK_SECRET) {
-      throw new Error("STRIPE_WEBHOOK_SECRET is not configured");
-    }
-
-    const signature = req.headers["stripe-signature"];
-    const event = stripe.webhooks.constructEvent(
+    event = getStripe().webhooks.constructEvent(
       req.body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET
+      config.stripeWebhookSecret
     );
+  } catch (error) {
+    console.error(`❌ [Webhook ${req.id || "-"}] Invalid signature: ${error.message}`);
+    return res.status(400).json({ message: "Invalid Stripe signature" });
+  }
 
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object;
-      const bookingId = session.metadata?.bookingId;
+  try {
+    switch (event.type) {
+      case "checkout.session.completed":
+      case "checkout.session.async_payment_succeeded": {
+        const session = event.data.object;
+        const bookingId = session?.metadata?.bookingId;
 
-      if (bookingId) {
-        const booking = await Booking.findById(bookingId);
-        if (booking) {
-          await confirmPayment(booking, session);
+        if (!isValidObjectId(bookingId)) {
+          console.warn(`⚠️ [Webhook] Event ${event.id} has no valid bookingId`);
+          break;
         }
+
+        const booking = await Booking.findById(bookingId);
+        if (!booking) {
+          // Acknowledge so Stripe stops retrying an event we cannot reconcile.
+          console.warn(`⚠️ [Webhook] Booking ${bookingId} not found`);
+          break;
+        }
+
+        await confirmPayment(booking, session);
+        break;
       }
+
+      case "checkout.session.expired": {
+        const session = event.data.object;
+        const bookingId = session?.metadata?.bookingId;
+        if (isValidObjectId(bookingId)) {
+          await Booking.updateOne(
+            { _id: bookingId, paymentStatus: "unpaid", stripeSessionId: session.id },
+            { $set: { stripeSessionId: "" } }
+          );
+        }
+        break;
+      }
+
+      case "charge.refunded": {
+        const charge = event.data.object;
+        const paymentIntent =
+          typeof charge.payment_intent === "string" ? charge.payment_intent : "";
+        if (paymentIntent) {
+          await Payment.updateOne(
+            { stripePaymentIntentId: paymentIntent },
+            { $set: { status: "refunded" } }
+          );
+        }
+        break;
+      }
+
+      default:
+        // Other events are acknowledged and ignored.
+        break;
     }
 
     return res.json({ received: true });
   } catch (error) {
-    console.error("Stripe webhook error:", error.message);
-    return res.status(400).json({
-      message: "Webhook processing failed",
-      ...(process.env.NODE_ENV !== "production"
-        ? { error: error.message }
-        : {}),
-    });
+    // Returning 5xx makes Stripe retry, which is what we want on transient errors.
+    return next(error);
   }
 };
 
-const verifyPayment = async (req, res) => {
+// 3. Verify a checkout session from the success page.
+const verifyPayment = async (req, res, next) => {
   try {
+    const sessionId = cleanString(req.params.sessionId, 300);
+    if (!sessionId.startsWith("cs_")) {
+      return res.status(400).json({ message: "Invalid checkout session id" });
+    }
+
     const stripe = getStripe();
-    const session = await stripe.checkout.sessions.retrieve(req.params.sessionId);
+    let session;
+    try {
+      session = await stripe.checkout.sessions.retrieve(sessionId);
+    } catch (error) {
+      if (error.code === "resource_missing") {
+        return res.status(404).json({ message: "Payment session not found" });
+      }
+      throw error;
+    }
 
     if (session.payment_status !== "paid") {
-      return res.status(400).json({ message: "Unpaid" });
+      return res.status(400).json({ message: "Payment has not been completed" });
     }
 
     const bookingId = session.metadata?.bookingId;
-    const booking = bookingId ? await Booking.findById(bookingId) : null;
+    if (!isValidObjectId(bookingId)) {
+      return res.status(400).json({ message: "Payment session is missing a booking reference" });
+    }
 
+    const booking = await Booking.findById(bookingId);
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
     }
 
-    // A renter may only verify payment for their own booking.
-    if (String(booking.customerId) !== String(req.user.id)) {
-      return res.status(403).json({ message: "Not your booking" });
+    // A session id is not a secret: never let one customer confirm another's
+    // booking. client_reference_id is the booking id, so only the signed
+    // customerId metadata can be compared against the authenticated user.
+    const sessionCustomerId = session.metadata?.customerId || "";
+    if (
+      booking.customerId !== req.user.id ||
+      (sessionCustomerId && sessionCustomerId !== req.user.id)
+    ) {
+      return res.status(403).json({ message: "This payment does not belong to you" });
     }
 
-    await confirmPayment(booking, session);
-    return res.json({ message: "Payment verified", booking });
-  } catch (error) {
-    console.error("Stripe payment verification error:", error.message);
-    return res.status(500).json({
-      message: "Unable to verify payment",
-      ...(process.env.NODE_ENV !== "production"
-        ? { error: error.message }
-        : {}),
+    const result = await confirmPayment(booking, session);
+    return res.json({
+      message: "Payment verified",
+      booking: result.booking,
+      ...(result.refunded ? { refund: result.refund } : {}),
     });
+  } catch (error) {
+    return next(error);
   }
 };
 
-module.exports = {
-  createCheckoutSession,
-  stripeWebhook,
-  verifyPayment,
-};
+module.exports = { createCheckoutSession, stripeWebhook, verifyPayment };
